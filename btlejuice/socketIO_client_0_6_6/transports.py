@@ -1,30 +1,28 @@
 import requests
 import six
+import socket
 import ssl
+import sys
 import threading
 import time
-import socket
-from six.moves.urllib.parse import urlencode as format_query
-from six.moves.urllib.parse import urlparse as parse_url
-from socket import error as SocketError
-try:
-    from websocket import (
-        WebSocketConnectionClosedException, WebSocketTimeoutException,
-        create_connection)
-except ImportError:
-    exit("""\
+import websocket
+from six import string_types
+
+from .exceptions import ConnectionError, TimeoutError
+from .parsers import (
+    encode_engineIO_content, decode_engineIO_content,
+    format_packet_text, parse_packet_text, format_packet_binary)
+from .symmetries import format_query, memoryview, parse_url
+
+
+if not hasattr(websocket, 'create_connection'):
+    sys.exit("""\
 An incompatible websocket library is conflicting with the one we need.
 You can remove the incompatible library and install the correct one
 by running the following commands:
 
 yes | pip uninstall websocket websocket-client
 pip install -U websocket-client""")
-
-from .exceptions import ConnectionError, TimeoutError
-from .parsers import (
-    encode_engineIO_content, decode_engineIO_content,
-    format_packet_text, parse_packet_text, format_packet_binary)
-from .symmetries import SSLError, memoryview
 
 
 ENGINEIO_PROTOCOL = 3
@@ -92,7 +90,7 @@ class XHR_PollingTransport(AbstractTransport):
             data = encode_engineIO_content([
                 (engineIO_packet_type, engineIO_packet_data),
             ])
-            get_response(
+            response = get_response(
                 self.http_session.post,
                 self._http_url,
                 params=params,
@@ -131,57 +129,55 @@ class WebsocketTransport(AbstractTransport):
                     proxy_url_pack.username, proxy_url_pack.password)
         if http_session.verify:
             if http_session.cert:  # Specify certificate path on disk
-                if isinstance(http_session.cert, six.string_types):
+                if isinstance(http_session.cert, string_types):
                     kw['ca_certs'] = http_session.cert
                 else:
                     kw['ca_certs'] = http_session.cert[0]
         else:  # Do not verify the SSL certificate
             kw['sslopt'] = {'cert_reqs': ssl.CERT_NONE}
         try:
-            self._connection = create_connection(ws_url, **kw)
+            self._connection = websocket.create_connection(ws_url, **kw)
         except Exception as e:
             raise ConnectionError(e)
 
     def recv_packet(self):
         try:
             packet_text = self._connection.recv()
-        except WebSocketTimeoutException as e:
+        except websocket.WebSocketTimeoutException as e:
             raise TimeoutError('recv timed out (%s)' % e)
-        except SSLError as e:
+        except websocket.SSLError as e:
             raise ConnectionError('recv disconnected by SSL (%s)' % e)
-        except WebSocketConnectionClosedException as e:
+        except websocket.WebSocketConnectionClosedException as e:
             raise ConnectionError('recv disconnected (%s)' % e)
-        except SocketError as e:
+        except socket.error as e:
             raise ConnectionError('recv disconnected (%s)' % e)
-        if not isinstance(packet_text, six.binary_type):
-            packet_text = packet_text.encode('utf-8')
         engineIO_packet_type, engineIO_packet_data = parse_packet_text(
-            packet_text)
+            six.b(packet_text))
         yield engineIO_packet_type, engineIO_packet_data
 
     def send_packet(self, engineIO_packet_type, engineIO_packet_data=''):
-        packet = format_packet_text(engineIO_packet_type, engineIO_packet_data)
         try:
+            packet = format_packet_text(engineIO_packet_type, engineIO_packet_data)
             self._connection.send(packet)
-        except WebSocketTimeoutException as e:
+        except websocket.WebSocketTimeoutException as e:
             raise TimeoutError('send timed out (%s)' % e)
-        except (SocketError, WebSocketConnectionClosedException) as e:
+        except socket.error as e:
+            raise ConnectionError('send disconnected (%s)' % e)
+        except websocket.WebSocketConnectionClosedException as e:
             raise ConnectionError('send disconnected (%s)' % e)
 
-    # TODO: ADD ##################################
 
     def send_binary_packet(self, engineIO_packet_data=''):
         try:
             packet = format_packet_binary(4, engineIO_packet_data)
             self._connection.send_binary(packet)
-        except WebSocketTimeoutException as e:
+        except websocket.WebSocketTimeoutException as e:
             raise TimeoutError('send timed out (%s)' % e)
         except socket.error as e:
             raise ConnectionError('send disconnected (%s)' % e)
-        except WebSocketConnectionClosedException as e:
+        except websocket.WebSocketConnectionClosedException as e:
             raise ConnectionError('send disconnected (%s)' % e)
 
-    # ############################################
 
     def set_timeout(self, seconds=None):
         self._connection.settimeout(seconds or self._timeout)
@@ -192,10 +188,10 @@ def get_response(request, *args, **kw):
         response = request(*args, stream=True, **kw)
     except requests.exceptions.Timeout as e:
         raise TimeoutError(e)
-    except requests.exceptions.SSLError as e:
-        raise ConnectionError('could not negotiate SSL (%s)' % e)
     except requests.exceptions.ConnectionError as e:
         raise ConnectionError(e)
+    except requests.exceptions.SSLError as e:
+        raise ConnectionError('could not negotiate SSL (%s)' % e)
     status_code = response.status_code
     if 200 != status_code:
         raise ConnectionError('unexpected status code (%s %s)' % (
@@ -211,14 +207,6 @@ def prepare_http_session(kw):
     http_session.hooks.update(kw.get('hooks', {}))
     http_session.params.update(kw.get('params', {}))
     http_session.verify = kw.get('verify', True)
-    http_session.cert = _get_cert(kw)
+    http_session.cert = kw.get('cert')
     http_session.cookies.update(kw.get('cookies', {}))
     return http_session
-
-
-def _get_cert(kw):
-    # Reduce (None, None) to None
-    cert = kw.get('cert')
-    if hasattr(cert, '__iter__') and cert[0] is None:
-        cert = None
-    return cert

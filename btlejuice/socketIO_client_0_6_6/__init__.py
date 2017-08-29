@@ -1,28 +1,22 @@
-import atexit
-
-# TODO: ADD
 from types import *
-
 from .exceptions import ConnectionError, TimeoutError, PacketError
 from .heartbeats import HeartbeatThread
 from .logs import LoggingMixin
 from .namespaces import (
-    EngineIONamespace, SocketIONamespace,
-    LoggingSocketIONamespace, find_callback, make_logging_prefix)
+    EngineIONamespace, SocketIONamespace, LoggingSocketIONamespace,
+    find_callback)
 from .parsers import (
     parse_host, parse_engineIO_session,
     format_socketIO_packet_data, parse_socketIO_packet_data,
-    get_namespace_path, 
-    # TODO: ADD
-    parse_socketIO_binary_packet_data, _data_is_binary, 
-    format_socketIO_binary_packet_data, Buffer)
+    get_namespace_path, parse_socketIO_binary_packet_data,
+    _data_is_binary, format_socketIO_binary_packet_data, Buffer)
 from .symmetries import get_character
 from .transports import (
     WebsocketTransport, XHR_PollingTransport, prepare_http_session, TRANSPORTS)
 
 
 __all__ = 'SocketIO', 'SocketIONamespace'
-__version__ = '0.7.0'
+__version__ = '0.6.6'
 BaseNamespace = SocketIONamespace
 LoggingNamespace = LoggingSocketIONamespace
 
@@ -51,9 +45,8 @@ class EngineIO(LoggingMixin):
         self._http_session = prepare_http_session(kw)
 
         self._log_name = self._url
-        self._opened = False
         self._wants_to_close = False
-        atexit.register(self._close)
+        self._opened = False
 
         if Namespace:
             self.define(Namespace)
@@ -84,8 +77,7 @@ class EngineIO(LoggingMixin):
             except (TimeoutError, ConnectionError) as e:
                 if not self._wait_for_connection:
                     raise
-                warning = Exception(
-                    '[engine.io waiting for connection] %s' % e)
+                warning = Exception('[waiting for connection] %s' % e)
                 warning_screen.throw(warning)
         assert engineIO_packet_type == 0  # engineIO_packet_type == open
         return parse_engineIO_session(engineIO_packet_data)
@@ -108,7 +100,7 @@ class EngineIO(LoggingMixin):
                         self._warn('unexpected engine.io packet')
             except Exception:
                 pass
-        self._debug('[engine.io transport selected] %s', self.transport_name)
+        self._debug('[transport selected] %s', self.transport_name)
 
     def _reset_heartbeat(self):
         try:
@@ -130,7 +122,7 @@ class EngineIO(LoggingMixin):
         self._heartbeat_thread.start()
         if hurried:
             self._heartbeat_thread.hurry()
-        self._debug('[engine.io heartbeat reset]')
+        self._debug('[heartbeat reset]')
 
     def _connect_namespaces(self):
         pass
@@ -199,10 +191,9 @@ class EngineIO(LoggingMixin):
         self._wants_to_close = True
         try:
             self._heartbeat_thread.halt()
-            self._heartbeat_thread.join()
         except AttributeError:
             pass
-        if not hasattr(self, '_opened') or not self._opened:
+        if not self._opened:
             return
         engineIO_packet_type = 1
         try:
@@ -257,9 +248,6 @@ class EngineIO(LoggingMixin):
                     self._process_packets()
                 except TimeoutError:
                     pass
-                except KeyboardInterrupt:
-                    self._close()
-                    raise
             except ConnectionError as e:
                 self._opened = False
                 try:
@@ -269,7 +257,7 @@ class EngineIO(LoggingMixin):
                     self._warn(warning)
                 try:
                     namespace = self.get_namespace()
-                    namespace._find_packet_callback('disconnect')()
+                    namespace.on_disconnect()
                 except PacketError:
                     pass
         self._heartbeat_thread.relax()
@@ -298,13 +286,13 @@ class EngineIO(LoggingMixin):
                 4: self._on_message,
                 5: self._on_upgrade,
                 6: self._on_noop,
-                7: self._on_blob,  # TODO: ADD
+                7: self._on_blob,
             }[engineIO_packet_type]
         except KeyError:
             raise PacketError(
                 'unexpected engine.io packet type (%s)' % engineIO_packet_type)
         delegate(engineIO_packet_data, namespace)
-        if engineIO_packet_type == 4:
+        if engineIO_packet_type is 4:
             return engineIO_packet_data
 
     def _on_open(self, data, namespace):
@@ -329,7 +317,6 @@ class EngineIO(LoggingMixin):
     def _on_noop(self, data, namespace):
         namespace._find_packet_callback('noop')()
 
-    # TODO: ADD
     def _on_blob(self, data, namespace):
         namespace._find_packet_callback('blob')()
 
@@ -359,11 +346,9 @@ class SocketIO(EngineIO):
         self._namespace_by_path = {}
         self._callback_by_ack_id = {}
         self._ack_id = 0
-        # TODO: ADD
         self.buffers = []
         self.attachment_count = 0
         self.current_packet = None
-
         super(SocketIO, self).__init__(
             host, port, Namespace, wait_for_connection, transports,
             resource, hurry_interval_in_seconds, **kw)
@@ -394,7 +379,7 @@ class SocketIO(EngineIO):
         self._namespace_by_path[path] = namespace = Namespace(self, path)
         if path:
             self.connect(path)
-            self.wait(for_namespace=namespace)
+            self.wait(for_connect=True)
         return namespace
 
     def on(self, event, callback, path=''):
@@ -412,30 +397,26 @@ class SocketIO(EngineIO):
 
     # Act
 
-    def connect(self, path='', with_transport_instance=False):
-        if path or not self.connected:
-            socketIO_packet_type = 0
-            socketIO_packet_data = format_socketIO_packet_data(path)
-            self._message(
-                str(socketIO_packet_type) + socketIO_packet_data,
-                with_transport_instance)
-        self._wants_to_close = False
+    def connect(self, path, with_transport_instance=False):
+        socketIO_packet_type = 0
+        socketIO_packet_data = format_socketIO_packet_data(path)
+        self._message(
+            str(socketIO_packet_type) + socketIO_packet_data,
+            with_transport_instance)
 
     def disconnect(self, path=''):
-        if path and self._opened:
+        if not path or not self._opened:
+            self._close()
+        elif path:
             socketIO_packet_type = 1
             socketIO_packet_data = format_socketIO_packet_data(path)
             try:
                 self._message(str(socketIO_packet_type) + socketIO_packet_data)
             except (TimeoutError, ConnectionError):
                 pass
-        elif not path:
-            self._close()
         try:
-            namespace = self._namespace_by_path[path]
-            namespace._find_packet_callback('disconnect')()
-            if path:
-                del self._namespace_by_path[path]
+            namespace = self._namespace_by_path.pop(path)
+            namespace.on_disconnect()
         except KeyError:
             pass
 
@@ -445,7 +426,6 @@ class SocketIO(EngineIO):
         ack_id = self._set_ack_callback(callback) if callback else None
         args = [event] + list(args)
 
-        # TODO: ADD
         # determine if some args are binary
         if _data_is_binary(args):
             #print args
@@ -459,7 +439,6 @@ class SocketIO(EngineIO):
             for buf in buffers:
                 transport.send_binary_packet(buf.content)
         else:
-
             socketIO_packet_type = 2
             socketIO_packet_data = format_socketIO_packet_data(path, ack_id, args)
             self._message(str(socketIO_packet_type) + socketIO_packet_data)
@@ -481,17 +460,13 @@ class SocketIO(EngineIO):
     def wait_for_callbacks(self, seconds=None):
         self.wait(seconds, for_callbacks=True)
 
-    def _should_stop_waiting(self, for_namespace=False, for_callbacks=False):
-        if for_namespace:
-            namespace = for_namespace
-            if getattr(namespace, '_invalid', False):
-                raise ConnectionError(
-                    'invalid socket.io namespace (%s)' % namespace.path)
-            if not getattr(namespace, '_connected', False):
-                self._debug(
-                    '%s[socket.io waiting for connection]',
-                    make_logging_prefix(namespace.path))
-                return False
+    def _should_stop_waiting(self, for_connect=False, for_callbacks=False):
+        if for_connect:
+            for namespace in self._namespace_by_path.values():
+                is_namespace_connected = getattr(
+                    namespace, '_connected', False)
+                if not is_namespace_connected:
+                    return False
             return True
         if for_callbacks and not self._has_ack_callback:
             return True
@@ -502,15 +477,12 @@ class SocketIO(EngineIO):
         if engineIO_packet_data is None:
             return
         self._debug('[socket.io packet received] %s', engineIO_packet_data)
-        
-        # TODO: ADD
         try:
             socketIO_packet_type = int(get_character(engineIO_packet_data, 0))
             socketIO_packet_data = engineIO_packet_data[1:]
         except ValueError:
             socketIO_packet_type = 7
             socketIO_packet_data = engineIO_packet_data[1:]
-
         # Launch callbacks
         path = get_namespace_path(socketIO_packet_data)
         namespace = self.get_namespace(path)
@@ -523,34 +495,24 @@ class SocketIO(EngineIO):
                 4: self._on_error,
                 5: self._on_binary_event,
                 6: self._on_binary_ack,
-                # TODO: ADD
                 7: self._on_binary_buffer,
             }[socketIO_packet_type]
         except KeyError:
             raise PacketError(
                 'unexpected socket.io packet type (%s)' % socketIO_packet_type)
-        # delegate(parse_socketIO_packet_data(socketIO_packet_data), namespace)
-        def binary_switch_socketIO_packet_data(socketIO_packet_data):
-            if socketIO_packet_type != 7:
-                return parse_socketIO_packet_data(socketIO_packet_data)
-            return socketIO_packet_data
-        delegate(
-            binary_switch_socketIO_packet_data(socketIO_packet_data),
-            namespace
-        )
+        delegate(socketIO_packet_data, namespace)
         return socketIO_packet_data
 
-    def _on_connect(self, data_parsed, namespace):
+    def _on_connect(self, data, namespace):
         namespace._connected = True
         namespace._find_packet_callback('connect')()
-        self._debug(
-            '%s[socket.io connected]', make_logging_prefix(namespace.path))
 
-    def _on_disconnect(self, data_parsed, namespace):
+    def _on_disconnect(self, data, namespace):
         namespace._connected = False
         namespace._find_packet_callback('disconnect')()
 
-    def _on_event(self, data_parsed, namespace):
+    def _on_event(self, data, namespace):
+        data_parsed = parse_socketIO_packet_data(data)
         args = data_parsed.args
         try:
             event = args.pop(0)
@@ -561,32 +523,28 @@ class SocketIO(EngineIO):
                 data_parsed.path, data_parsed.ack_id))
         namespace._find_packet_callback(event)(*args)
 
-    def _on_ack(self, data_parsed, namespace):
+    def _on_ack(self, data, namespace):
+        data_parsed = parse_socketIO_packet_data(data)
         try:
             ack_callback = self._get_ack_callback(data_parsed.ack_id)
         except KeyError:
             return
         ack_callback(*data_parsed.args)
 
-    def _on_error(self, data_parsed, namespace):
-        namespace._find_packet_callback('error')(*data_parsed.args)
+    def _on_error(self, data, namespace):
+        namespace._find_packet_callback('error')(data)
 
-    def _on_binary_event(self, data_parsed, namespace):
-        # self._warn('[not implemented] binary event')
-        # TODO: ADD
+    def _on_binary_event(self, data, namespace):
         # parse binary event
-        parsed = parse_socketIO_binary_packet_data(data_parsed)
+        parsed = parse_socketIO_binary_packet_data(data)
         if parsed.attachment_count > 0:
             self.attachment_count = parsed.attachment_count
             self.packet = parsed
         else:
             namespace._find_packet_callback(parsed.args[0])(*parsed.args[1:])
 
-    def _on_binary_ack(self, data_parsed, namespace):
+    def _on_binary_ack(self, data, namespace):
         self._warn('[not implemented] binary ack')
-
-
-    # TODO: ADD ###############################
 
     def _on_binary_buffer(self, data, namespace):
         if self.attachment_count > 0:
@@ -607,14 +565,12 @@ class SocketIO(EngineIO):
         """
         Crawl the packet data and replace placeholders by the buffers.
         """
-        # if type(packet) is ListType:
-        if type(packet) is list:
+        if type(packet) is ListType:
             rebuilt_list = []
             for item in packet:
                 rebuilt_list.append(self._rebuild_packet(item, buffers))
             return rebuilt_list
-        # elif type(packet) is DictType:
-        elif type(packet) is dict:
+        elif type(packet) is DictType:
             if u'_placeholder' in packet and u'num' in packet:
                 # replace placeholder with the correct buffer
                 num = int(packet[u'num'])
@@ -626,9 +582,6 @@ class SocketIO(EngineIO):
                 return rebuilt_dict
         else:
             return packet
-
-    # #########################################
-
 
     def _prepare_to_send_ack(self, path, ack_id):
         'Return function that acknowledges the server'

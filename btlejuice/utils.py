@@ -22,8 +22,10 @@ def hexiify(data):
     Convert data to HexII representation.
     """
     def convert_byte(b):
+        print(b)
         if ord(b) >= ord('0') and ord(b) <= ord('z'):
             return '.%c' % ord(b)
         else:
             return '%02x' % ord(b)
+    print('DATA : {}  |  LIST(DATA) : {}'.format(data, list(data)))
     return ' '.join(map(convert_byte, list(data)))

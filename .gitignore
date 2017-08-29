@@ -1,0 +1,10 @@
+.vscode/
+.idea/
+
+__pycache__/
+*.egg-info
+
+build/
+dist/
+
+tests/btlejuice

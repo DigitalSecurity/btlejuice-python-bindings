@@ -1,22 +1,16 @@
 import json
-import six
-# TODO: ADD
 import functools
+import six
 from collections import namedtuple
-# TODO: ADD
 from types import *
-from six.moves.urllib.parse import urlparse as parse_url
-
-from .symmetries import decode_string, encode_string, get_byte, get_character
+from .symmetries import (
+    decode_string, encode_string, get_byte, get_character, parse_url)
 
 
 EngineIOSession = namedtuple('EngineIOSession', [
     'id', 'ping_interval', 'ping_timeout', 'transport_upgrades'])
 SocketIOData = namedtuple('SocketIOData', ['path', 'ack_id', 'args'])
-# TODO: ADD
-SocketIOBinaryData = namedtuple(
-    'SocketIOBinaryData', ['path', 'ack_id', 'args', 'attachment_count']
-)
+SocketIOBinaryData = namedtuple('SocketIOBinaryData', ['path', 'ack_id', 'args', 'attachment_count'])
 
 
 def parse_host(host, port, resource):
@@ -25,7 +19,7 @@ def parse_host(host, port, resource):
     url_pack = parse_url(host)
     is_secure = url_pack.scheme == 'https'
     port = port or url_pack.port or (443 if is_secure else 80)
-    url = '%s:%s%s/%s' % (url_pack.hostname, port, url_pack.path, resource)
+    url = '%s:%d%s/%s' % (url_pack.hostname, port, url_pack.path, resource)
     return is_secure, url
 
 
@@ -70,20 +64,16 @@ def format_socketIO_packet_data(path=None, ack_id=None, args=None):
         socketIO_packet_data = path + ',' + socketIO_packet_data
     return socketIO_packet_data
 
-# TODO: ADD #######################################
-
 def format_socketIO_binary_packet_data(path=None, ack_id=None, args=None):
     # detect binary strings and convert them to placeholders
     buffers = []
     def _deconstruct_data(data):
-        # if type(data) is ListType:
-        if type(data) is list:
+        if type(data) is ListType:
             dec_list = []
             for item in data:
                 dec_list.append(_deconstruct_data(item))
             return dec_list
-        # elif type(data) is DictType:
-        elif type(data) is dict:
+        elif type(data) is DictType:
             dec_dict = {}
             for item in data:
                 dec_dict[item] = _deconstruct_data(data[item])
@@ -102,7 +92,6 @@ def format_socketIO_binary_packet_data(path=None, ack_id=None, args=None):
     socketIO_packet_data = str(len(buffers))+'-' + socketIO_packet_data
     return (buffers, socketIO_packet_data)
 
-# #################################################
 
 def parse_socketIO_packet_data(socketIO_packet_data):
     data = decode_string(socketIO_packet_data)
@@ -124,70 +113,48 @@ def parse_socketIO_packet_data(socketIO_packet_data):
         args = json.loads(data)
     except ValueError:
         args = []
-    if isinstance(args, six.string_types):
-        args = [args]
     return SocketIOData(path=path, ack_id=ack_id, args=args)
 
-# TODO: ADD #######################################
-
 def parse_socketIO_binary_packet_data(socketIO_packet_data):
-    # path = None
-    # data = None
-    # ep = socketIO_packet_data
-    # print(ep)
-    # dash = (ep + b'-').find(b'-')
-    # comma = (ep + b',').find(b',')
-    # attachment_count = 0
-    # ack_id = None
-    # data = None
-    # if dash < comma:
-    #     attachment_count = int(ep[0:dash])
-    #     ep = ep[dash + 1:]
-    # if ep and ep[0:1] == '/':
-    #     sep = ep.find(',')
-    #     if sep == -1:
-    #         path = ep
-    #         ep = ''
-    #     else:
-    #         path = ep[0:sep]
-    #         ep = ep[sep + 1:]
+    path = None
+    data = None
+    ep = socketIO_packet_data
+    # dash = (ep + '-').find('-')
+    dash = (ep + b'-').find(b'-')
+    # comma = (ep + ',').find(',')
+    comma = (ep + b',').find(b',')
+    attachment_count = 0
+    ack_id = None
+    data = None
+    if dash < comma:
+        attachment_count = int(ep[0:dash])
+        ep = ep[dash + 1:]
+    if ep and ep[0:1] == '/':
+        sep = ep.find(',')
+        if sep == -1:
+            path = ep
+            ep = ''
+        else:
+            path = ep[0:sep]
+            ep = ep[sep + 1:]
     # if ep and ep[0].isdigit():
-    #     ack_id = 0
-    #     while ep[0].isdigit():
-    #         ack_id = self.id * 10 + int(ep[0])
-    #         ep = ep[1:]
-    # if ep:
-    #     data = json.loads(ep)
-    # return SocketIOBinaryData(attachment_count=attachment_count, path=path, ack_id=ack_id, args=data)
-    return SocketIOBinaryData(
-        attachment_count=1,
-        path=socketIO_packet_data.path,
-        ack_id=socketIO_packet_data.ack_id,
-        args=socketIO_packet_data.args
-    )
+    if ep and ep[0]:
+        ack_id = 0
+        while ep[0]:
+            ack_id = ack_id * 10 + int(ep[0])
+            ep = ep[1:]
+    if ep:
+        data = json.loads(ep)
+    return SocketIOBinaryData(attachment_count=attachment_count, path=path, ack_id=ack_id, args=data)
 
-# #################################################
 
 def format_packet_text(packet_type, packet_data):
     return encode_string(str(packet_type) + packet_data)
 
-# TODO: ADD #######################################
-
 def format_packet_binary(packet_type, packet_data):
-    data_str = ''
-    if isinstance(packet_data, SocketIOData):
-        data_str = '{}{}{}'.format(
-            packet_data.path, packet_data.ack_id, packet_data.args
-        )
-    else:
-        data_str = packet_data.decode('utf-8')
-    # return (chr(packet_type) + packet_data)
-    return (chr(packet_type) + data_str)
-
-# #################################################
+    return (chr(packet_type) + packet_data)
 
 def parse_packet_text(packet_text):
-    # TODO: ADD
     try:
         packet_type = int(get_character(packet_text, 0))
         packet_data = packet_text[1:]
@@ -241,8 +208,6 @@ def _read_packet_text(content, content_index, packet_length):
     packet_text = content[content_index:content_index + packet_length]
     return content_index + packet_length, packet_text
 
-# TODO: ADD #######################################
-
 def _data_is_binary(data):
     """Check if the data contains binary components."""
     if isinstance(data, Buffer):
@@ -262,5 +227,3 @@ def _data_is_binary(data):
 class Buffer:
     def __init__(self, content):
         self.content = content
-
-# #################################################
