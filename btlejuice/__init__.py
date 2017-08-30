@@ -150,7 +150,7 @@ class BtleJuiceApp(Thread):
     def cancel(self):
         self.canceled = True
 
-# Main exports
+# Main exports
 
 __all__ = [
     'SniffingInterface',
