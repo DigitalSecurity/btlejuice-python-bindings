@@ -34,10 +34,7 @@ def get_character(x, index):
 
 
 def decode_string(x):
-    # print('######################## X : {}'.format(x))
-    # return x.decode('utf-8')
     return str(x.decode('unicode_escape'))
-    # return x
 
 def encode_string(x):
     return x.encode('utf-8')

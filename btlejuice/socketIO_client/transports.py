@@ -168,8 +168,6 @@ class WebsocketTransport(AbstractTransport):
         except (SocketError, WebSocketConnectionClosedException) as e:
             raise ConnectionError('send disconnected (%s)' % e)
 
-    # TODO: ADD ##################################
-
     def send_binary_packet(self, engineIO_packet_data=''):
         try:
             if isinstance(engineIO_packet_data, bytes):
@@ -182,8 +180,6 @@ class WebsocketTransport(AbstractTransport):
             raise ConnectionError('send disconnected (%s)' % e)
         except WebSocketConnectionClosedException as e:
             raise ConnectionError('send disconnected (%s)' % e)
-
-    # ############################################
 
     def set_timeout(self, seconds=None):
         self._connection.settimeout(seconds or self._timeout)

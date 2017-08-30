@@ -1,8 +1,5 @@
 import atexit
 
-# TODO: ADD
-from types import *
-
 from .exceptions import ConnectionError, TimeoutError, PacketError
 from .heartbeats import HeartbeatThread
 from .logs import LoggingMixin
@@ -12,8 +9,7 @@ from .namespaces import (
 from .parsers import (
     parse_host, parse_engineIO_session,
     format_socketIO_packet_data, parse_socketIO_packet_data,
-    get_namespace_path, 
-    # TODO: ADD
+    get_namespace_path,
     parse_socketIO_binary_packet_data, _data_is_binary, 
     format_socketIO_binary_packet_data, Buffer)
 from .symmetries import get_character
@@ -298,7 +294,7 @@ class EngineIO(LoggingMixin):
                 4: self._on_message,
                 5: self._on_upgrade,
                 6: self._on_noop,
-                7: self._on_blob,  # TODO: ADD
+                7: self._on_blob,
             }[engineIO_packet_type]
         except KeyError:
             raise PacketError(
@@ -329,7 +325,6 @@ class EngineIO(LoggingMixin):
     def _on_noop(self, data, namespace):
         namespace._find_packet_callback('noop')()
 
-    # TODO: ADD
     def _on_blob(self, data, namespace):
         namespace._find_packet_callback('blob')()
 
@@ -359,11 +354,9 @@ class SocketIO(EngineIO):
         self._namespace_by_path = {}
         self._callback_by_ack_id = {}
         self._ack_id = 0
-        # TODO: ADD
         self.buffers = []
         self.attachment_count = 0
         self.current_packet = None
-
         super(SocketIO, self).__init__(
             host, port, Namespace, wait_for_connection, transports,
             resource, hurry_interval_in_seconds, **kw)
@@ -444,12 +437,8 @@ class SocketIO(EngineIO):
         callback, args = find_callback(args, kw)
         ack_id = self._set_ack_callback(callback) if callback else None
         args = [event] + list(args)
-
-        # TODO: ADD
         # determine if some args are binary
         if _data_is_binary(args):
-            #print args
-            #print 'send binary'
             socketIO_packet_type = 5
             buffers, socketIO_packet_data = format_socketIO_binary_packet_data(path, ack_id, args)
             # send our response
@@ -502,8 +491,6 @@ class SocketIO(EngineIO):
         if engineIO_packet_data is None:
             return
         self._debug('[socket.io packet received] %s', engineIO_packet_data)
-        
-        # TODO: ADD
         try:
             socketIO_packet_type = int(get_character(engineIO_packet_data, 0))
             socketIO_packet_data = engineIO_packet_data[1:]
@@ -523,13 +510,11 @@ class SocketIO(EngineIO):
                 4: self._on_error,
                 5: self._on_binary_event,
                 6: self._on_binary_ack,
-                # TODO: ADD
                 7: self._on_binary_buffer,
             }[socketIO_packet_type]
         except KeyError:
             raise PacketError(
                 'unexpected socket.io packet type (%s)' % socketIO_packet_type)
-        # delegate(parse_socketIO_packet_data(socketIO_packet_data), namespace)
         def binary_switch_socketIO_packet_data(socketIO_packet_data):
             if socketIO_packet_type != 7:
                 return parse_socketIO_packet_data(socketIO_packet_data)
@@ -572,8 +557,6 @@ class SocketIO(EngineIO):
         namespace._find_packet_callback('error')(*data_parsed.args)
 
     def _on_binary_event(self, data_parsed, namespace):
-        # self._warn('[not implemented] binary event')
-        # TODO: ADD
         # parse binary event
         parsed = parse_socketIO_binary_packet_data(data_parsed)
         if parsed.attachment_count > 0:
@@ -584,9 +567,6 @@ class SocketIO(EngineIO):
 
     def _on_binary_ack(self, data_parsed, namespace):
         self._warn('[not implemented] binary ack')
-
-
-    # TODO: ADD ###############################
 
     def _on_binary_buffer(self, data, namespace):
         if self.attachment_count > 0:
@@ -600,20 +580,17 @@ class SocketIO(EngineIO):
                 self.packet = None
                 self.buffers = []
         else:
-            #print data.encode('hex')
             self._warn('[unexpected] do not exepect a binary blob right now')
 
     def _rebuild_packet(self, packet, buffers):
         """
         Crawl the packet data and replace placeholders by the buffers.
         """
-        # if type(packet) is ListType:
         if type(packet) is list:
             rebuilt_list = []
             for item in packet:
                 rebuilt_list.append(self._rebuild_packet(item, buffers))
             return rebuilt_list
-        # elif type(packet) is DictType:
         elif type(packet) is dict:
             if u'_placeholder' in packet and u'num' in packet:
                 # replace placeholder with the correct buffer
@@ -626,9 +603,6 @@ class SocketIO(EngineIO):
                 return rebuilt_dict
         else:
             return packet
-
-    # #########################################
-
 
     def _prepare_to_send_ack(self, path, ack_id):
         'Return function that acknowledges the server'
