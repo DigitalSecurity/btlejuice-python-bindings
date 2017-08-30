@@ -174,15 +174,7 @@ def format_packet_text(packet_type, packet_data):
 # TODO: ADD #######################################
 
 def format_packet_binary(packet_type, packet_data):
-    data_str = ''
-    if isinstance(packet_data, SocketIOData):
-        data_str = '{}{}{}'.format(
-            packet_data.path, packet_data.ack_id, packet_data.args
-        )
-    else:
-        data_str = packet_data.decode('utf-8')
-    # return (chr(packet_type) + packet_data)
-    return (chr(packet_type) + data_str)
+    return encode_string(chr(packet_type) + packet_data)
 
 # #################################################
 

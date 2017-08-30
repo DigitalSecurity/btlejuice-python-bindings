@@ -172,6 +172,8 @@ class WebsocketTransport(AbstractTransport):
 
     def send_binary_packet(self, engineIO_packet_data=''):
         try:
+            if isinstance(engineIO_packet_data, bytes):
+                engineIO_packet_data = engineIO_packet_data.decode('utf-8')
             packet = format_packet_binary(4, engineIO_packet_data)
             self._connection.send_binary(packet)
         except WebSocketTimeoutException as e:
