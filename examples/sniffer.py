@@ -14,26 +14,22 @@ class MySniffingInterface(SniffingInterface):
         """
         Read callback
         """
-        # print('[<][%s - %s] %s' % (service, characteristic, hexiify(data)))
-        print('[<][{} - {}] {}'.format(service, characteristic, data))
+        print('[<][%s - %s] %s' % (service, characteristic, hexiify(data)))
 
     def on_data_write(self, service, characteristic, data, offset, withoutResponse):
         """
         Write callback.
         """
-        # print('[>][%s - %s] %s' % (service, characteristic, hexiify(data)))
-        print('[>][{} - {}] {}'.format(service, characteristic, data))
+        print('[>][%s - %s] %s' % (service, characteristic, hexiify(data)))
 
     def on_notification_data(self, service, characteristic, data):
         """
         Data notification callback.
         """
-        # print('[!][%s - %s] %s' % (service, characteristic, hexiify(data)))
-        print('[!][{} - {}] {}'.format(service, characteristic, data))
+        print('[!][%s - %s] %s' % (service, characteristic, hexiify(data)))
 
     def on_subscribe_notification(self, service, characteristic, enabled):
-        # print('[N][%s - %s] %s' % (service, characteristic, enabled))
-        print('[N][{} - {}] {}'.format(service, characteristic, enabled))
+        print('[N][%s - %s] %s' % (service, characteristic, enabled))
 
     def client_connect(self, client):
         """
