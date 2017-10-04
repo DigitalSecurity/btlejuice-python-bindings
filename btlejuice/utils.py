@@ -26,4 +26,6 @@ def hexiify(data):
             return '.%c' % ord(b)
         else:
             return '%02x' % ord(b)
+    if isinstance(data, bytes):
+        data = data.decode('utf-8')
     return ' '.join(map(convert_byte, list(data)))
